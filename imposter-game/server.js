@@ -38,6 +38,11 @@ io.on('connection', socket => {
       socket.emit('errorMsg', 'Spiel hat bereits begonnen');
       return;
     }
+    // Check ob Name schon vergeben
+if (lobby.players.find(p => p.name.toLowerCase() === name.toLowerCase())) {
+  socket.emit('errorMsg', 'Dieser Name ist in der Lobby bereits vergeben.');
+  return;
+}
     // Check ob Gerät schon drin ist
     if (lobby.players.find(p => p.deviceId === deviceId)) {
       socket.emit('errorMsg', 'Dieses Gerät ist bereits in der Lobby.');

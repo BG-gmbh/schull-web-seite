@@ -8,6 +8,9 @@
   body { font-family: sans-serif; background: #222; color: #eee; padding: 20px; }
   input, button { font-size: 1rem; margin: 5px 0; padding: 8px; }
   #game, #roleView { display: none; }
+  .word-input { display: flex; margin-bottom: 5px; }
+  .word-input input { flex: 1; }
+  .word-input button { margin-left: 5px; }
 </style>
 </head>
 <body>
@@ -29,8 +32,12 @@
   <ul id="playersList"></ul>
 
   <div id="hostSettings" style="display:none">
-    <input type="text" id="word" placeholder="Wort eingeben" />
-    <input type="number" id="imposters" min="1" value="1" />
+    <h3>Wörter eingeben:</h3>
+    <div id="wordsList"></div>
+    <button id="addWord">Wort hinzufügen +</button>
+    <br/>
+    <label>Anzahl Imposter: <input type="number" id="imposters" min="1" value="1" /></label>
+    <br/>
     <button id="saveSettings">Einstellungen speichern</button>
     <button id="startGame">Spiel starten</button>
   </div>
@@ -46,6 +53,13 @@
   let currentLobby = null;
   let isHost = false;
 
+  // Device ID: einmalig pro Browser speichern
+  let deviceId = localStorage.getItem('deviceId');
+  if (!deviceId) {
+    deviceId = 'device-' + Math.random().toString(36).substring(2, 15);
+    localStorage.setItem('deviceId', deviceId);
+  }
+
   const startScreen = document.getElementById('startScreen');
   const lobbyDiv = document.getElementById('lobby');
   const roleView = document.getElementById('roleView');
@@ -53,6 +67,7 @@
   const lobbyIdSpan = document.getElementById('lobbyId');
   const errorP = document.getElementById('error');
   const hostSettings = document.getElementById('hostSettings');
+  const wordsList = document.getElementById('wordsList');
 
   document.getElementById('createBtn').onclick = () => {
     socket.emit('createLobby');
@@ -66,10 +81,11 @@
     lobbyDiv.style.display = 'block';
     hostSettings.style.display = 'block';
     addPlayer(prompt("Dein Name?") || "Host");
+    addWordInput(); // gleich ein Wortfeld zeigen
   });
 
   function addPlayer(name) {
-    socket.emit('joinLobby', { lobbyId: currentLobby, name });
+    socket.emit('joinLobby', { lobbyId: currentLobby, name, deviceId });
   }
 
   document.getElementById('joinBtn').onclick = () => {
@@ -97,13 +113,20 @@
   });
 
   document.getElementById('saveSettings').onclick = () => {
-    const word = document.getElementById('word').value.trim();
+    const words = [];
+    document.querySelectorAll('.word-input input').forEach(input => {
+      if (input.value.trim() !== '') words.push(input.value.trim());
+    });
     const imposters = parseInt(document.getElementById('imposters').value);
-    if (!word || !imposters || imposters < 1) {
-      alert("Bitte gültiges Wort und Anzahl Imposter eingeben");
+    if (words.length === 0) {
+      alert("Bitte mindestens ein Wort eingeben");
       return;
     }
-    socket.emit('saveSettings', { lobbyId: currentLobby, word, imposters });
+    if (!imposters || imposters < 1) {
+      alert("Bitte gültige Anzahl Imposter eingeben");
+      return;
+    }
+    socket.emit('saveSettings', { lobbyId: currentLobby, words, imposters });
     alert("Einstellungen gespeichert");
   };
 
@@ -111,8 +134,8 @@
     socket.emit('startGame', currentLobby);
   };
 
-  socket.on('settingsSaved', ({ word, imposters }) => {
-    console.log(`Wort: ${word}, Imposter: ${imposters}`);
+  socket.on('settingsSaved', ({ words, imposters }) => {
+    console.log(`Wörter: ${words.join(', ')}, Imposter: ${imposters}`);
   });
 
   socket.on('gameStarted', () => {
@@ -127,6 +150,25 @@
       : `Dein Wort ist: ${word}`;
     document.getElementById('roleText').textContent = roleText;
   });
+
+  function addWordInput(value = '') {
+    const div = document.createElement('div');
+    div.className = 'word-input';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Wort eingeben';
+    input.value = value;
+    const btn = document.createElement('button');
+    btn.textContent = '✖';
+    btn.onclick = () => div.remove();
+    div.appendChild(input);
+    div.appendChild(btn);
+    wordsList.appendChild(div);
+  }
+
+  document.getElementById('addWord').onclick = () => {
+    addWordInput();
+  };
 </script>
 
 </body>

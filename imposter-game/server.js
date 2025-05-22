@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { nanoid } = require('nanoid'); // Für Lobby-IDs
+const { nanoid } = require('nanoid');
 
 const app = express();
 const server = http.createServer(app);
@@ -9,18 +9,17 @@ const io = new Server(server);
 
 app.use(express.static('public'));
 
-let lobbies = {}; // Lobby-Daten: { lobbyId: { players: [], hostId, word, imposters, started } }
+let lobbies = {}; // Lobby-Daten: { lobbyId: { players: [{id, name, deviceId, role}], hostId, words: [], imposters, started } }
 
 io.on('connection', socket => {
   console.log('Neue Verbindung:', socket.id);
 
-  // Lobby erstellen
   socket.on('createLobby', () => {
     const lobbyId = nanoid(4).toUpperCase();
     lobbies[lobbyId] = {
       players: [],
       hostId: socket.id,
-      word: '',
+      words: [],
       imposters: 1,
       started: false,
     };
@@ -29,8 +28,7 @@ io.on('connection', socket => {
     console.log(`Lobby ${lobbyId} erstellt von ${socket.id}`);
   });
 
-  // Lobby beitreten
-  socket.on('joinLobby', ({ lobbyId, name }) => {
+  socket.on('joinLobby', ({ lobbyId, name, deviceId }) => {
     const lobby = lobbies[lobbyId];
     if (!lobby) {
       socket.emit('errorMsg', 'Lobby nicht gefunden');
@@ -40,47 +38,50 @@ io.on('connection', socket => {
       socket.emit('errorMsg', 'Spiel hat bereits begonnen');
       return;
     }
-    lobby.players.push({ id: socket.id, name, role: null });
+    // Check ob Gerät schon drin ist
+    if (lobby.players.find(p => p.deviceId === deviceId)) {
+      socket.emit('errorMsg', 'Dieses Gerät ist bereits in der Lobby.');
+      return;
+    }
+    lobby.players.push({ id: socket.id, name, deviceId, role: null });
     socket.join(lobbyId);
     io.to(lobbyId).emit('playerList', lobby.players.map(p => p.name));
     console.log(`${name} ist Lobby ${lobbyId} beigetreten`);
   });
 
-  // Einstellungen speichern (Host)
-  socket.on('saveSettings', ({ lobbyId, word, imposters }) => {
+  socket.on('saveSettings', ({ lobbyId, words, imposters }) => {
     const lobby = lobbies[lobbyId];
     if (!lobby || socket.id !== lobby.hostId) return;
-    lobby.word = word;
+    lobby.words = words.filter(w => w.trim().length > 0);
     lobby.imposters = imposters;
-    io.to(lobbyId).emit('settingsSaved', { word, imposters });
+    io.to(lobbyId).emit('settingsSaved', { words: lobby.words, imposters });
   });
 
-  // Spiel starten (Host)
   socket.on('startGame', (lobbyId) => {
     const lobby = lobbies[lobbyId];
     if (!lobby || socket.id !== lobby.hostId) return;
     const total = lobby.players.length;
     const impostersCount = Math.min(lobby.imposters, total - 1);
 
-    // Rollen verteilen
+    // Imposter zuweisen
     let indices = [...Array(total).keys()];
     for (let i = 0; i < impostersCount; i++) {
       let idx = indices.splice(Math.floor(Math.random() * indices.length), 1)[0];
       lobby.players[idx].role = 'imposter';
     }
+    // Normale Spieler bekommen zufällig ein Wort aus der Liste
     lobby.players.forEach(p => {
       if (!p.role) p.role = 'normal';
-      io.to(p.id).emit('roleAssigned', {
-        role: p.role,
-        word: p.role === 'normal' ? lobby.word : null
-      });
+      const word = p.role === 'normal' && lobby.words.length > 0
+        ? lobby.words[Math.floor(Math.random() * lobby.words.length)]
+        : null;
+      io.to(p.id).emit('roleAssigned', { role: p.role, word });
     });
 
     lobby.started = true;
     io.to(lobbyId).emit('gameStarted');
   });
 
-  // Spieler trennt sich
   socket.on('disconnect', () => {
     for (const [lobbyId, lobby] of Object.entries(lobbies)) {
       const index = lobby.players.findIndex(p => p.id === socket.id);
@@ -89,7 +90,6 @@ io.on('connection', socket => {
         lobby.players.splice(index, 1);
         io.to(lobbyId).emit('playerList', lobby.players.map(p => p.name));
         console.log(`${name} hat Lobby ${lobbyId} verlassen`);
-        // Lobby löschen, wenn leer
         if (lobby.players.length === 0) {
           delete lobbies[lobbyId];
           console.log(`Lobby ${lobbyId} gelöscht (leer)`);

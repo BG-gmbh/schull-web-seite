@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Imposter Game</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: sans-serif; background: #1e1e2f; color: #fff; padding: 2rem; }
+    input, button { margin: 0.5rem 0; padding: 0.5rem; font-size: 1rem; }
+  </style>
+</head>
+<body>
+  <h1>🎭 Imposter Game (Lokal)</h1>
+
+  <div id="joinView">
+    <input type="text" id="name" placeholder="Dein Name">
+    <button onclick="joinGame()">Beitreten</button>
+  </div>
+
+  <div id="lobbyView" style="display:none">
+    <h2>Spielerliste:</h2>
+    <ul id="playerList"></ul>
+
+    <div id="hostControls">
+      <input type="text" id="word" placeholder="Wort eingeben">
+      <input type="number" id="imposters" min="1" value="1">
+      <button onclick="sendSettings()">Einstellungen speichern</button>
+      <button onclick="startGame()">Spiel starten</button>
+    </div>
+  </div>
+
+  <div id="roleView" style="display:none">
+    <h2>🕵️ Deine Rolle</h2>
+    <p id="roleText"></p>
+  </div>
+
+  <script>
+    const socket = io();
+    let isHost = false;
+
+    function joinGame() {
+      const name = document.getElementById('name').value;
+      if (!name) return alert("Name eingeben!");
+      socket.emit('join', name);
+      document.getElementById('joinView').style.display = 'none';
+      document.getElementById('lobbyView').style.display = 'block';
+      isHost = true; // Erste Person = Host
+    }
+
+    socket.on('updatePlayers', (players) => {
+      const list = document.getElementById('playerList');
+      list.innerHTML = '';
+      players.forEach(name => {
+        const li = document.createElement('li');
+        li.textContent = name;
+        list.appendChild(li);
+      });
+    });
+
+    function sendSettings() {
+      const word = document.getElementById('word').value;
+      const imposters = parseInt(document.getElementById('imposters').value);
+      if (!word) return alert("Wort fehlt");
+      socket.emit('settings', { word, imposters });
+    }
+
+    function startGame() {
+      socket.emit('startGame');
+    }
+
+    socket.on('role', (data) => {
+      document.getElementById('lobbyView').style.display = 'none';
+      document.getElementById('roleView').style.display = 'block';
+      document.getElementById('roleText').textContent = data.role === 'imposter'
+        ? "Du bist der Imposter 🤫" : `Dein Wort ist: ${data.word}`;
+    });
+  </script>
+</body>
+</html>

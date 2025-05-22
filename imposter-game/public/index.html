@@ -32,6 +32,9 @@
   <ul id="playersList"></ul>
 
   <div id="hostSettings" style="display:none">
+    <label for="wordFile">Wörter aus Datei hochladen (.txt):</label>
+    <input type="file" id="wordFile" accept=".txt" />
+    <br/>
     <h3>Wörter eingeben:</h3>
     <div id="wordsList"></div>
     <button id="addWord">Wort hinzufügen +</button>
@@ -52,6 +55,25 @@
   const socket = io();
   let currentLobby = null;
   let isHost = false;
+
+  document.getElementById('wordFile').addEventListener('change', function(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    // Datei in Wörter splitten (jede Zeile ein Wort)
+    const lines = text.split(/\r?\n/).map(w => w.trim()).filter(w => w.length > 0);
+
+    lines.forEach(word => {
+      addWordInput(word);
+    });
+  };
+  reader.readAsText(file);
+  // Datei-Input zurücksetzen, falls nochmal hochgeladen werden soll
+  event.target.value = '';
+});
 
   // Device ID: einmalig pro Browser speichern
   let deviceId = localStorage.getItem('deviceId');

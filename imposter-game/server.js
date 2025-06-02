@@ -74,13 +74,18 @@ if (lobby.players.find(p => p.name.toLowerCase() === name.toLowerCase())) {
       let idx = indices.splice(Math.floor(Math.random() * indices.length), 1)[0];
       lobby.players[idx].role = 'imposter';
     }
-    // Normale Spieler bekommen zufällig ein Wort aus der Liste
+
+    // EIN Wort für alle normalen Spieler auswählen
+    const word = lobby.words.length > 0
+      ? lobby.words[Math.floor(Math.random() * lobby.words.length)]
+      : null;
+
     lobby.players.forEach(p => {
       if (!p.role) p.role = 'normal';
-      const word = p.role === 'normal' && lobby.words.length > 0
-        ? lobby.words[Math.floor(Math.random() * lobby.words.length)]
-        : null;
-      io.to(p.id).emit('roleAssigned', { role: p.role, word });
+      io.to(p.id).emit('roleAssigned', {
+        role: p.role,
+        word: p.role === 'normal' ? word : null
+      });
     });
 
     lobby.started = true;

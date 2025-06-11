@@ -10,6 +10,7 @@ const io = new Server(server);
 app.use(express.static('public'));
 
 let lobbies = {}; // Lobby-Daten: { lobbyId: { players: [{id, name, deviceId, role}], hostId, words: [], imposters, started } }
+let votes = {}; // Voting-Status pro Lobby speichern
 
 io.on('connection', socket => {
   console.log('Neue Verbindung:', socket.id);
@@ -92,6 +93,49 @@ if (lobby.players.find(p => p.name.toLowerCase() === name.toLowerCase())) {
     io.to(lobbyId).emit('gameStarted');
   });
 
+  socket.on('votePlayer', ({ lobbyId, votedName }) => {
+    const lobby = lobbies[lobbyId];
+    if (!lobby || !lobby.started) return;
+    if (!votes[lobbyId]) votes[lobbyId] = {};
+    votes[lobbyId][socket.id] = votedName;
+
+    // Wenn alle lebenden Spieler abgestimmt haben
+    if (Object.keys(votes[lobbyId]).length >= lobby.players.length) {
+      // Stimmen auswerten
+      const tally = {};
+      Object.values(votes[lobbyId]).forEach(name => {
+        tally[name] = (tally[name] || 0) + 1;
+      });
+      // Spieler mit meisten Stimmen finden
+      let max = 0, outName = null;
+      for (const [name, count] of Object.entries(tally)) {
+        if (count > max) {
+          max = count;
+          outName = name;
+        }
+      }
+      // Spieler entfernen
+      const idx = lobby.players.findIndex(p => p.name === outName);
+      if (idx !== -1) {
+        const outPlayer = lobby.players.splice(idx, 1)[0];
+        io.to(lobbyId).emit('playerVotedOut', outName);
+        io.to(outPlayer.id).emit('votedOut');
+      }
+      // Votes zurücksetzen für nächste Runde
+      votes[lobbyId] = {};
+      // Neue Spieler-Liste senden
+      if (lobby.players.length === 0) {
+        io.to(lobbyId).emit('gameOver', 'Alle Spieler wurden gewählt!');
+        delete lobbies[lobbyId];
+      }
+      else if (lobby.players.every(p => p.role === 'imposter')) {
+        io.to(lobbyId).emit('gameOver', 'Imposter haben gewonnen!');
+        delete lobbies[lobbyId];
+      } else {
+        io.to(lobbyId).emit('playerList', lobby.players.map(p => p.name));
+    }
+  };
+
   socket.on('disconnect', () => {
     for (const [lobbyId, lobby] of Object.entries(lobbies)) {
       const index = lobby.players.findIndex(p => p.id === socket.id);
@@ -107,9 +151,14 @@ if (lobby.players.find(p => p.name.toLowerCase() === name.toLowerCase())) {
         break;
       }
     }
+    // Votes aufräumen
+    for (const lobbyId in votes) {
+      delete votes[lobbyId][socket.id];
+    }
   });
 });
 
 server.listen(3000, () => {
   console.log('Server läuft auf http://localhost:3000');
-});
+  })
+})

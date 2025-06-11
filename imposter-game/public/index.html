@@ -51,6 +51,12 @@
   <p id="roleText"></p>
 </div>
 
+<div id="voteView" style="display:none">
+  <h2>Abstimmung</h2>
+  <p>Wen möchtest du rausvoten?</p>
+  <ul id="voteList"></ul>
+</div>
+
 <script>
   const socket = io();
   let currentLobby = null;
@@ -90,6 +96,8 @@
   const errorP = document.getElementById('error');
   const hostSettings = document.getElementById('hostSettings');
   const wordsList = document.getElementById('wordsList');
+  const voteView = document.getElementById('voteView');
+  const voteList = document.getElementById('voteList');
 
   document.getElementById('createBtn').onclick = () => {
     socket.emit('createLobby');
@@ -164,6 +172,84 @@
     startScreen.style.display = 'none';
     lobbyDiv.style.display = 'none';
     roleView.style.display = 'block';
+    setTimeout(() => {
+      roleView.style.display = 'none';
+      voteView.style.display = 'block';
+      socket.emit('requestPlayerList', currentLobby); // optional, falls nötig
+    }, 5000); // 5 Sekunden warten, dann Voting anzeigen
+  });
+
+  // Spieler-Liste für Voting anzeigen
+  socket.on('playerList', players => {
+    playersList.innerHTML = '';
+    voteList.innerHTML = '';
+    players.forEach(p => {
+      const li = document.createElement('li');
+      li.textContent = p;
+      playersList.appendChild(li);
+
+      // Voting-Button
+      const voteLi = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.textContent = p;
+      btn.onclick = () => {
+        socket.emit('votePlayer', { lobbyId: currentLobby, votedName: p });
+        voteView.innerHTML = "<p>Danke für deine Stimme!</p>";
+      };
+      voteLi.appendChild(btn);
+      voteList.appendChild(voteLi);
+    });
+  });
+
+  // Info, wer rausgevotet wurde
+  socket.on('playerVotedOut', name => {
+    alert(`${name} wurde rausgevotet!`);
+    voteView.style.display = 'none';
+    // Hier könntest du das nächste Voting oder das Spielende triggern
+  });
+
+  // Wenn man selbst rausgevotet wurde
+  socket.on('votedOut', () => {
+    alert("Du wurdest rausgevotet! Du bist jetzt Zuschauer.");
+    voteView.style.display = 'none';
+    roleView.style.display = 'none';
+    // Zuschauer-Ansicht anzeigen
+    showSpectatorView();
+  });
+
+  function showSpectatorView() {
+    let spectatorDiv = document.getElementById('spectatorView');
+    if (!spectatorDiv) {
+      spectatorDiv = document.createElement('div');
+      spectatorDiv.id = 'spectatorView';
+      spectatorDiv.innerHTML = `
+        <h2>Du bist Zuschauer</h2>
+        <p>Du kannst das Spiel weiter beobachten.</p>
+        <ul id="spectatorPlayers"></ul>
+      `;
+      document.body.appendChild(spectatorDiv);
+    }
+    spectatorDiv.style.display = 'block';
+  }
+
+  // Spieler-Liste für Zuschauer aktualisieren
+  socket.on('playerList', players => {
+    playersList.innerHTML = '';
+    players.forEach(p => {
+      const li = document.createElement('li');
+      li.textContent = p;
+      playersList.appendChild(li);
+    });
+    // Auch für Zuschauer aktualisieren
+    const spectatorPlayers = document.getElementById('spectatorPlayers');
+    if (spectatorPlayers) {
+      spectatorPlayers.innerHTML = '';
+      players.forEach(p => {
+        const li = document.createElement('li');
+        li.textContent = p;
+        spectatorPlayers.appendChild(li);
+      });
+    }
   });
 
   socket.on('roleAssigned', ({ role, word }) => {
